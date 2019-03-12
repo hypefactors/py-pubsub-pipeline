@@ -1,1 +1,2 @@
 google-cloud-pubsub==0.39.1
+pytest==4.3.0
