@@ -15,7 +15,7 @@ class GracefulKiller:
         self.kill_now = False
         signal.signal(signal.SIGINT, self.exit_gracefully)
         signal.signal(signal.SIGTERM, self.exit_gracefully)
-        self.signum: int = None
+        self.signum = None
 
     def exit_gracefully(self, signum, frame):
         self.signum = signum
