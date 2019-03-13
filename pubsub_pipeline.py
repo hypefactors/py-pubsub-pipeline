@@ -50,13 +50,18 @@ class Acknowledger:
             )
 
 
+def byte_load_json(data: bytes):
+    data = data.decode('utf-8')
+    return json.loads(data)
+
+
 class PubSubPipeline(Generic[A, B]):
     def __init__(self,
                  processor: Callable[[A], B],
                  google_cloud_project: str,
                  incoming_subscription: str,
                  outgoing_topic: str,
-                 message_deserializer: Callable[[bytes], A] = json.loads,
+                 message_deserializer: Callable[[bytes], A] = byte_load_json,
                  result_serializer: Callable[[B], bytes] = byte_encode_json,
                  bulk_limit=20,
                  subscriber: SubscriberClient = None,
