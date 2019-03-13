@@ -7,7 +7,7 @@ Google Cloud Pubsub queues with a data processing component .
 
 # Install
 
-`pip install -e git+http://github.com/hypefactors/py-pubsub-pipeline.git@v0.0.1#egg=pusub_pipeline`
+`pip install -e git+http://github.com/hypefactors/py-pubsub-pipeline.git@v0.0.1#egg=pubsub_pipeline`
 
 
 # Usage
