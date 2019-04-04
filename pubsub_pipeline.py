@@ -2,7 +2,7 @@ import json
 import logging
 import signal
 import sys
-from typing import TypeVar, Generic, Callable, NoReturn
+from typing import TypeVar, Generic, Callable, NoReturn, List
 
 from google.cloud.pubsub_v1 import SubscriberClient, PublisherClient
 
@@ -112,6 +112,15 @@ class PubSubPipeline(Generic[A, B]):
         self.subscriber = (subscriber if subscriber is not None
                            else SubscriberClient())
 
+        self.subscription_path = self.subscriber.subscription_path(
+            self.google_cloud_project,
+            self.incoming_subscription
+        )
+        self.topic_path = self.publisher.topic_path(
+            self.google_cloud_project,
+            self.outgoing_topic
+        )
+
     def process(self, max_processed_messages=None) -> NoReturn:
         """
         Begin collecting messages from PubSub subscription
@@ -122,58 +131,93 @@ class PubSubPipeline(Generic[A, B]):
         :param max_processed_messages: Max number of messages to process before
                                        returning.
         """
-        subscription_path = self.subscriber.subscription_path(
-            self.google_cloud_project,
-            self.incoming_subscription
-        )
-        logging.info('Using incoming subscription %s' % subscription_path)
-        topic_path = self.publisher.topic_path(
-            self.google_cloud_project,
-            self.outgoing_topic
-        )
-        logging.info('Using outgoing topic %s ' % topic_path)
+        
+        logging.info('Using incoming subscription %s' % self.subscription_path)
+
+        logging.info('Using outgoing topic %s ' % self.topic_path)
 
         killer = GracefulKiller()
         total_messages_processed = 0
         while True:
-            try:
-                logging.info('Waiting for messages...')
-                response = self.subscriber.pull(
-                    subscription_path,
-                    max_messages=self.bulk_limit
+            if killer.kill_now:
+                logging.info(
+                    'Received signal %d, exiting gracefully...' % killer.signum
                 )
-                logging.info('Received messages')
-                for message in response.received_messages:
-                    if killer.kill_now:
-                        logging.info(
-                            'Received signal %d, exiting gracefully...' % killer.signum
-                        )
-                        sys.exit(0)
+                sys.exit(0)
+            try:
+                response = self.wait_for_messages()
+                self._process_response(response)
+                total_messages_processed += len(response.received_messages)
+                if (
+                        max_processed_messages is not None
+                        and total_messages_processed == max_processed_messages
+                ):
+                    logging.info('Reached max number of processed messages')
+                    return
 
-                    message_data = self.message_deserializer(message.message.data)
-                    logging.info(
-                        'Deserialized data from %s' % message.ack_id
-                    )
-                    result = self.processor(message_data)
-                    logging.info('Processed result of %s' % message.ack_id)
-                    serialized_result = self.result_serializer(result)
-                    logging.info('Serialized result of processing %s' % message.ack_id)
-                    acknowledger = Acknowledger(
-                        message=message,
-                        subscriber=self.subscriber,
-                        subscription_path=subscription_path
-                    )
-                    future = self.publisher.publish(
-                        topic_path, data=serialized_result
-                    )
-                    future.add_done_callback(acknowledger)
-                    total_messages_processed += 1
-                    if (
-                            max_processed_messages is not None
-                            and total_messages_processed == max_processed_messages
-                    ):
-                        logging.info('Reached max number of processed messages')
-                        return
             except KeyboardInterrupt:
                 logging.info('Received keyboard interrupt. Exiting...')
                 sys.exit(0)
+
+    def _process_response(self, response):
+        for message in response.received_messages:
+            self._process_message(message)
+
+    def _process_message(self, message):
+        message_data = self.message_deserializer(message.message.data)
+        logging.info(
+            'Deserialized data from %s' % message.ack_id
+        )
+        result = self.processor(message_data)
+        logging.info('Processed result of %s' % message.ack_id)
+        serialized_result = self.result_serializer(result)
+        logging.info('Serialized result of processing %s' % message.ack_id)
+        acknowledger = Acknowledger(
+            message=message,
+            subscriber=self.subscriber,
+            subscription_path=self.subscription_path
+        )
+        future = self.publisher.publish(
+            self.topic_path, data=serialized_result
+        )
+        future.add_done_callback(acknowledger)
+
+    def wait_for_messages(self):
+        logging.info('Waiting for messages...')
+        response = self.subscriber.pull(
+            self.subscription_path,
+            max_messages=self.bulk_limit
+        )
+        logging.info('Received messages')
+        return response
+
+
+class BulkPubSubPipeline(PubSubPipeline):
+    def __init__(self,
+                 processor: Callable[[List[A]], B],
+                 google_cloud_project: str,
+                 incoming_subscription: str,
+                 outgoing_topic: str,
+                 *args,
+                 **kwargs):
+        super().__init__(processor, google_cloud_project, incoming_subscription,
+                         outgoing_topic, *args, **kwargs)
+
+    def _process_response(self, response):
+        messages = response.received_messages
+        message_data = [self.message_deserializer(message.message.data)
+                        for message in messages]
+        results = self.processor(message_data)
+        serialized_results = [self.result_serializer(result)
+                              for result in results]
+        for result, message in zip(serialized_results, messages):
+            future = self.publisher.publish(
+                self.topic_path, data=result
+            )
+            future.add_done_callback(
+                Acknowledger(
+                    message=message,
+                    subscription_path=self.subscription_path,
+                    subscriber=self.subscriber
+                )
+            )

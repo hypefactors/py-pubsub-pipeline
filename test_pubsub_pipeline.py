@@ -1,7 +1,9 @@
 import json
 from unittest.mock import MagicMock
 
-from pubsub_pipeline import PubSubPipeline
+import pytest
+
+from pubsub_pipeline import PubSubPipeline, BulkPubSubPipeline
 
 
 def _mock_future(on_add_done_callback=None):
@@ -49,7 +51,8 @@ def _mock_subscriber(received_messages=(_mock_message(),)):
     return subscriber
 
 
-def test_message_is_acknowledged_on_successful_publish():
+@pytest.mark.parametrize('pipeline', [PubSubPipeline, BulkPubSubPipeline])
+def test_message_is_acknowledged_on_successful_publish(pipeline):
     def on_publish(topic_path, data):
         assert topic_path == 'some/topic/path'
         assert isinstance(data, bytes)
@@ -69,7 +72,7 @@ def test_message_is_acknowledged_on_successful_publish():
 
     mock_future = _mock_future(on_add_done_callback)
 
-    PubSubPipeline(
+    pipeline(
         google_cloud_project='',
         incoming_subscription='',
         outgoing_topic='',
@@ -79,7 +82,8 @@ def test_message_is_acknowledged_on_successful_publish():
     ).process(max_processed_messages=1)
 
 
-def test_message_is_not_acknowledged_on_failure():
+@pytest.mark.parametrize('pipeline', [PubSubPipeline, BulkPubSubPipeline])
+def test_message_is_not_acknowledged_on_failure(pipeline):
     def on_add_done_callback(callback):
         callback(mock_future)
         subscriber.acknowledge.assert_not_called()
@@ -89,7 +93,7 @@ def test_message_is_not_acknowledged_on_failure():
     subscriber = _mock_subscriber()
     publisher = _mock_publisher()
 
-    PubSubPipeline(
+    pipeline(
         google_cloud_project='',
         incoming_subscription='',
         outgoing_topic='',
