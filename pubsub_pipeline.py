@@ -5,7 +5,7 @@ import sys
 import time
 from typing import TypeVar, Generic, Callable, NoReturn, List
 
-from google.api_core.exceptions import DeadlineExceeded
+from google.api_core.exceptions import DeadlineExceeded, RetryError
 from google.cloud.pubsub_v1 import SubscriberClient, PublisherClient
 
 A = TypeVar('A')
@@ -199,7 +199,7 @@ class PubSubPipeline(Generic[A, B]):
             )
             logging.info('Received messages')
             return response
-        except DeadlineExceeded as e:
+        except (DeadlineExceeded, RetryError) as e:
             if self.respect_deadline:
                 raise e
             time.sleep(self.deadline_exceeded_retry_wait_secs)
