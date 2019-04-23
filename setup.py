@@ -9,7 +9,7 @@ setup(
                 'based on google cloud pubsub',
     author='Sune Debel',
     author_email='sad@hypefactors.com',
-    packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests", "test_client.py"]),
+    packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     license='LICENSE.txt',
     install_requires=['google-cloud-pubsub==0.39.1']
 )

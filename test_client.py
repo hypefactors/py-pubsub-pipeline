@@ -7,7 +7,8 @@ class TestClient:
     def __init__(self,
                  google_cloud_project,
                  pipeline_incoming_topic,
-                 outgoing_subscription):
+                 outgoing_subscription,
+                 callback=None):
         self.publisher = PublisherClient()
         self.subscriber = SubscriberClient()
         self.subscription = self.subscriber.subscription_path(
@@ -18,10 +19,10 @@ class TestClient:
             google_cloud_project,
             pipeline_incoming_topic
         )
-
-        def callback(message):
-            print(message.data)
-            message.ack()
+        if callback is None:
+            def callback(message):
+                print(message.data)
+                message.ack()
 
         self.subscriber.subscribe(self.subscription, callback=callback)
 

@@ -2,8 +2,10 @@ import json
 import logging
 import signal
 import sys
+import time
 from typing import TypeVar, Generic, Callable, NoReturn, List
 
+from google.api_core.exceptions import DeadlineExceeded
 from google.cloud.pubsub_v1 import SubscriberClient, PublisherClient
 
 A = TypeVar('A')
@@ -65,7 +67,9 @@ class PubSubPipeline(Generic[A, B]):
                  result_serializer: Callable[[B], bytes] = byte_encode_json,
                  bulk_limit=20,
                  subscriber: SubscriberClient = None,
-                 publisher: PublisherClient = None
+                 publisher: PublisherClient = None,
+                 respect_deadline=False,
+                 deadline_exceeded_retry_wait_secs=300
                  ):
         """
         Generic google cloud PubSub pipeline. Will continuously
@@ -98,8 +102,12 @@ class PubSubPipeline(Generic[A, B]):
                            instance. Defaults to `SubscriberClient()`.
         :param publisher: The google cloud PubSub :class:`PublisherClient`
                           instance. Defaults to `PublisherClient()`
+        :param respect_deadline: Whether to re-raise DeadlineExceeded errors
+                                 while pulling messages
 
         """
+        self.deadline_exceeded_retry_wait_secs = deadline_exceeded_retry_wait_secs
+        self.respect_deadline = respect_deadline
         self.processor = processor
         self.google_cloud_project = google_cloud_project
         self.incoming_subscription = incoming_subscription
@@ -184,12 +192,19 @@ class PubSubPipeline(Generic[A, B]):
 
     def wait_for_messages(self):
         logging.info('Waiting for messages...')
-        response = self.subscriber.pull(
-            self.subscription_path,
-            max_messages=self.bulk_limit
-        )
-        logging.info('Received messages')
-        return response
+        try:
+            response = self.subscriber.pull(
+                self.subscription_path,
+                max_messages=self.bulk_limit
+            )
+            logging.info('Received messages')
+            return response
+        except DeadlineExceeded as e:
+            if self.respect_deadline:
+                raise e
+            time.sleep(self.deadline_exceeded_retry_wait_secs)
+            logging.info('No messages received before deadline, retrying...')
+            return self.wait_for_messages()
 
 
 class BulkPubSubPipeline(PubSubPipeline):
