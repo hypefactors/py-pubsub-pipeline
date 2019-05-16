@@ -3,7 +3,7 @@ import logging
 import signal
 import sys
 import time
-from typing import TypeVar, Generic, Callable, NoReturn, List
+from typing import TypeVar, Generic, Callable, List
 
 from google.api_core.exceptions import DeadlineExceeded, RetryError
 from google.cloud.pubsub_v1 import SubscriberClient, PublisherClient
@@ -129,7 +129,7 @@ class PubSubPipeline(Generic[A, B]):
             self.outgoing_topic
         )
 
-    def process(self, max_processed_messages=None) -> NoReturn:
+    def process(self, max_processed_messages=None):
         """
         Begin collecting messages from PubSub subscription
         and processing them. Will never return unless `max_processed_messages`
@@ -200,6 +200,8 @@ class PubSubPipeline(Generic[A, B]):
             logging.info('Received messages')
             return response
         except (DeadlineExceeded, RetryError) as e:
+            if isinstance(e, RetryError) and not str(e).startswith('Deadline'):
+                raise e
             if self.respect_deadline:
                 raise e
             time.sleep(self.deadline_exceeded_retry_wait_secs)
