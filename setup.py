@@ -11,5 +11,5 @@ setup(
     author_email='sad@hypefactors.com',
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     license='LICENSE.txt',
-    install_requires=['google-cloud-pubsub==0.39.1']
+    install_requires=['google-cloud-pubsub==0.42.1']
 )
