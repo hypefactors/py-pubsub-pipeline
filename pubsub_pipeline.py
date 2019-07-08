@@ -222,6 +222,9 @@ class BulkPubSubPipeline(PubSubPipeline):
 
     def _process_response(self, response):
         messages = response.received_messages
+        if not messages:
+            # pubsub library can sometimes return no messages...
+            return
         message_data = [self.message_deserializer(message.message.data)
                         for message in messages]
         results = self.processor(message_data)
