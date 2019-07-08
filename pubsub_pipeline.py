@@ -153,7 +153,9 @@ class PubSubPipeline(Generic[A, B]):
                 )
                 sys.exit(0)
             try:
+                logging.info('Waiting for messages...')
                 response = self.wait_for_messages()
+                logging.info('Received messages')
                 self._process_response(response)
                 total_messages_processed += len(response.received_messages)
                 if (
@@ -191,13 +193,13 @@ class PubSubPipeline(Generic[A, B]):
         future.add_done_callback(acknowledger)
 
     def wait_for_messages(self):
-        logging.info('Waiting for messages...')
         try:
             response = self.subscriber.pull(
                 self.subscription_path,
                 max_messages=self.bulk_limit
             )
-            logging.info('Received messages')
+            if not response.received_messages:
+                return self.wait_for_messages()
             return response
         except (DeadlineExceeded, RetryError) as e:
             if isinstance(e, RetryError) and not str(e).startswith('Deadline'):
@@ -222,9 +224,6 @@ class BulkPubSubPipeline(PubSubPipeline):
 
     def _process_response(self, response):
         messages = response.received_messages
-        if not messages:
-            # pubsub library can sometimes return no messages...
-            return
         message_data = [self.message_deserializer(message.message.data)
                         for message in messages]
         results = self.processor(message_data)

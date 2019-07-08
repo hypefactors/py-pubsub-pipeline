@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='pubsub_pipeline',
-    version='0.0.6',
+    version='0.0.7',
     description='Easy implementation of python enrichment pipelines '
                 'based on google cloud pubsub',
     author='Sune Debel',
